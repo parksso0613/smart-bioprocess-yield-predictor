@@ -17,7 +17,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom Styling
+# Custom Styling (Fixed parameter: unsafe_allow_html=True)
 st.markdown("""
 <style>
     .main-title {
@@ -32,18 +32,19 @@ st.markdown("""
         margin-bottom: 20px;
     }
 </style>
-""", unsafe_allow_dict=True)
+""", unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🧫 실제 미생물 발효 CSV 데이터 기반 수율 예측 웹앱</div>', unsafe_allow_dict=True)
-st.markdown('<div class="sub-title">실제 배양 공정 데이터셋을 로드하여 독립 변수 탐색, 회귀 모델 평가 및 수율을 예측합니다.</div>', unsafe_allow_dict=True)
+st.markdown('<div class="main-title">🧫 실제 미생물 발휴 CSV 데이터 기반 수율 예측 웹앱</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">실제 배양 공정 데이터셋을 로드하여 독립 변수 탐색, 회귀 모델 평가 및 수율을 예측합니다.</div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # Real CSV Data Loading & Caching
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_real_csv_data():
-    # 1. 사용자가 다운로드받은 다양한 이름의 IndPenSim 또는 일반 fermentation CSV 파일 탐색
+    # 사용자가 업로드한 CSV 파일명 탐색
     possible_filenames = [
+        "100_Batches_IndPenSim_Statistics_2.csv",
         "100_Batches_IndPenSim_Statistics.csv",
         "fermentation_data.csv",
         "indpensim.csv"
@@ -91,7 +92,7 @@ def load_real_csv_data():
                     
         df_mapped = df_raw.rename(columns=rename_dict)
         
-        # 필요한 주요 컬럼만 추출
+        # 필요한 주요 컬럼만 추출 (무거운 센서 열 수백 개 자동 제외)
         target_cols = ['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen', 'Yield']
         available_cols = [c for c in target_cols if c in df_mapped.columns]
         
@@ -108,8 +109,8 @@ def load_real_csv_data():
                 
             return df
 
-    # 2. 로컬 파일이 없거나 컬럼 해석 실패 시 웹 예비 데이터셋 사용
-    st.toast("🌐 예비 바이오 발효 데이터셋으로 구동됩니다.", icon="ℹ️")
+    # 2. 로컬 파일이 없거나 컬럼 해석 실패 시 예비 바이오 데이터셋 사용
+    st.toast("🌐 기본 바이오 발효 데이터셋으로 구동됩니다.", icon="ℹ️")
     np.random.seed(42)
     n_samples = 300
     temp = np.random.normal(32, 2, n_samples)
@@ -118,7 +119,7 @@ def load_real_csv_data():
     agitation = np.random.uniform(150, 400, n_samples)
     do = np.random.uniform(30, 80, n_samples)
     
-    # 미생물 반응 반응속도론(Michaelis-Menten & 온도 최적점) 모사 수율 산출
+    # 미생물 반응 반응속도론 모사 수율 산출
     yield_val = (
         15 + 
         3.5 * glucose / (5 + glucose) + 
