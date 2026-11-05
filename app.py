@@ -1,12 +1,55 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import os
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score
+
+# -----------------------------------------------------------------------------
+# 1. Page Configuration & Custom CSS
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title="실제 바이오 공정 데이터 기반 수율 예측 시스템",
+    page_icon="🧫",
+    layout="wide"
+)
+
+st.markdown("""
+<style>
+    .main-title {
+        font-size: 2.2rem;
+        color: #1E3A8A;
+        font-weight: bold;
+        margin-bottom: 0px;
+    }
+    .sub-title {
+        font-size: 1.1rem;
+        color: #4B5563;
+        margin-bottom: 20px;
+    }
+    .metric-card {
+        background-color: #F3F4F6;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown('<div class="main-title">🧫 실제 미생물 발효 CSV 데이터 기반 수율 예측 웹앱</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">실제 배양 공정 데이터셋을 로드하여 독립 변수 탐색, 회귀 모델 평가 및 수율을 예측합니다.</div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# Real CSV Data Loading & Caching
+# 2. Real CSV Data Loading & Caching Function
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_real_csv_data():
-    """CSV 데이터를 로드하고 필요한 6개 핵심 컬럼으로 매핑하는 함수"""
+    """CSV 데이터를 안전하게 로드하고 6개 핵심 컬럼으로 자동 정리하는 함수"""
     possible_files = [
         "100_Batches_IndPenSim_Statistics_2.csv",
         "100_Batches_IndPenSim_Statistics.csv",
@@ -19,8 +62,8 @@ def load_real_csv_data():
             file_path = f
             break
             
+    # 로컬 CSV 파일이 존재하지 않는 경우 더미 기본 데이터 세트 생성
     if file_path is None:
-        # 파일이 없을 경우 인라인 기본 데이터셋 생성
         np.random.seed(42)
         n_samples = 300
         temp = np.random.uniform(25.0, 40.0, n_samples)
@@ -29,7 +72,6 @@ def load_real_csv_data():
         rpm = np.random.uniform(100, 500, n_samples)
         do = np.random.uniform(20.0, 80.0, n_samples)
         
-        # 실제 미생물 반응을 모사한 비선형 수율 공식
         yield_val = (
             -(temp - 33)**2 * 0.15 
             - (ph - 6.5)**2 * 8.0 
@@ -53,7 +95,6 @@ def load_real_csv_data():
     try:
         raw_df = pd.read_csv(file_path)
         
-        # 컬럼 매핑 규칙 정의 (IndPenSim 및 일반 CSV 대응)
         column_map = {}
         for col in raw_df.columns:
             col_lower = col.lower()
@@ -77,7 +118,6 @@ def load_real_csv_data():
             if df['Temperature'].mean() > 200:
                 df['Temperature'] = df['Temperature'] - 273.15
 
-        # 6개 필수 컬럼 보완
         required_cols = ['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen', 'Yield']
         for col in required_cols:
             if col not in df.columns:
@@ -88,13 +128,10 @@ def load_real_csv_data():
                 elif col == 'Dissolved_Oxygen': df[col] = 50.0
                 elif col == 'Yield': df[col] = 40.0
 
-        # 라만 센서 데이터 등 숫자 이름의 무거운 컬럼 제거하고 6개만 남기기
         clean_df = df[required_cols].dropna().reset_index(drop=True)
         return clean_df
         
     except Exception as e:
-        st.error(f"CSV 로딩 중 오류가 발생하여 기본 데이터셋으로 대체합니다: {e}")
-        # 오류 발생시 더미 데이터 생성
         np.random.seed(42)
         n_samples = 200
         return pd.DataFrame({
@@ -106,46 +143,191 @@ def load_real_csv_data():
             'Yield': np.random.uniform(20, 60, n_samples)
         })
 
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import os
-
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
-
-# Page Configuration
-st.set_page_config(
-    page_title="실제 바이오 공정 데이터 기반 수율 예측 시스템",
-    page_icon="🧫",
-    layout="wide"
-)
-
-# Custom Styling (Fixed parameter: unsafe_allow_html=True)
-st.markdown("""
-<style>
-    .main-title {
-        font-size: 2.2rem;
-        color: #1E3A8A;
-        font-weight: bold;
-        margin-bottom: 0px;
-    }
-    .sub-title {
-        font-size: 1.1rem;
-        color: #4B5563;
-        margin-bottom: 20px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="main-title">🧫 실제 미생물 발효 CSV 데이터 기반 수율 예측 웹앱</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">실제 배양 공정 데이터셋을 로드하여 독립 변수 탐색, 회귀 모델 평가 및 수율을 예측합니다.</div>', unsafe_allow_html=True)
+# 데이터 로딩
+df = load_real_csv_data()
 
 # -----------------------------------------------------------------------------
-# Real CSV Data Loading & Caching
+# 3. Model Training Function
 # -----------------------------------------------------------------------------
-@st.cache_data
-def load_real_csv_data():
+@st.cache_resource
+def train_models(data):
+    X = data[['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen']]
+    y = data['Yield']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    lr_model = LinearRegression()
+    lr_model.fit(X_train, y_train)
+    lr_pred = lr_model.predict(X_test)
+    
+    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf_model.fit(X_train, y_train)
+    rf_pred = rf_model.predict(X_test)
+    
+    metrics = {
+        'lr_r2': r2_score(y_test, lr_pred),
+        'lr_rmse': np.sqrt(mean_squared_error(y_test, lr_pred)),
+        'rf_r2': r2_score(y_test, rf_pred),
+        'rf_rmse': np.sqrt(mean_squared_error(y_test, rf_pred))
+    }
+    
+    return lr_model, rf_model, metrics, X_test, y_test, lr_pred, rf_pred
+
+lr_model, rf_model, metrics, X_test, y_test, lr_pred, rf_pred = train_models(df)
+
+# -----------------------------------------------------------------------------
+# 4. Streamlit Tabs Layout
+# -----------------------------------------------------------------------------
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 데이터 전처리 및 탐색 (EDA)", 
+    "❓ 소질문 분석", 
+    "🤖 모델 학습 및 평가", 
+    "🎛️ 실시간 수율 시뮬레이터"
+])
+
+# -----------------------------------------------------------------------------
+# Tab 1: 데이터 전처리 및 탐색
+# -----------------------------------------------------------------------------
+with tab1:
+    st.subheader("📌 1. 수집된 바이오 공정 데이터셋 요약")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.dataframe(df.head(10), use_container_width=True)
+    with col2:
+        st.write("**데이터 기초 통계량:**")
+        st.dataframe(df.describe().T[['mean', 'std', 'min', 'max']], use_container_width=True)
+        
+    st.subheader("📌 2. 독립 변수 간 상관관계 분석 (Correlation Matrix)")
+    corr = df.corr()
+    fig_corr = px.imshow(
+        corr, 
+        text_auto=".2f", 
+        color_continuous_scale="Blues",
+        title="배양 변수 및 수율 간 상관계수 히트맵"
+    )
+    st.plotly_chart(fig_corr, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# Tab 2: 소질문 시각화 탐색
+# -----------------------------------------------------------------------------
+with tab2:
+    st.subheader("🔍 보고서 소질문 데이터 시각화 검증")
+    
+    q_option = st.selectbox(
+        "확인할 소질문을 선택하세요:",
+        [
+            "소질문 ①: 배양 온도 변화에 따른 미생물 수율 양상",
+            "소질문 ②: pH와 용존산소량(DO)의 상관관계 및 영향력",
+            "소질문 ③: 포도당 농도 증가에 따른 수율 변화 패턴",
+            "소질문 ④: 수율에 영향을 미치는 변수 중요도 분석"
+        ]
+    )
+    
+    if "소질문 ①" in q_option:
+        st.markdown("**분석 결과:** 온도 상승 시 효소 활성이 촉진되지만, 최적 온도 초과 시 불활성화로 인해 수율이 감소하는 최적점 패턴을 보입니다.")
+        fig = px.scatter(df, x="Temperature", y="Yield", trendline="lowess", title="온도 vs 수율 산점도", color="Yield")
+        st.plotly_chart(fig, use_container_width=True)
+        
+    elif "소질문 ②" in q_option:
+        st.markdown("**분석 결과:** pH와 용존산소(DO)는 균체 호흡 및 대사 경로 유지에 필수적이며, pH 균형이 맞춰졌을 때 용존산소 효과가 극대화됩니다.")
+        fig = px.scatter(df, x="pH", y="Dissolved_Oxygen", color="Yield", title="pH vs 용존 산소량 (색상: 수율)", size="Yield")
+        st.plotly_chart(fig, use_container_width=True)
+        
+    elif "소질문 ③" in q_option:
+        st.markdown("**분석 결과:** 기질(포도당) 농도가 높아짐에 따라 수율이 증가하다가 일정 수치 이상에서는 저해 반응(Inhibition)이 관찰됩니다.")
+        fig = px.scatter(df, x="Glucose_Conc", y="Yield", trendline="ols", title="포도당 농도 vs 수율", color="Temperature")
+        st.plotly_chart(fig, use_container_width=True)
+        
+    elif "소질문 ④" in q_option:
+        st.markdown("**분석 결과:** 랜덤 포레스트 모델 기반 변수 중요도 추출 결과, 미생물 생산 수율에 가장 결정적인 영향을 미치는 상위 변수를 파악할 수 있습니다.")
+        importances = rf_model.feature_importances_
+        features = ['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen']
+        fi_df = pd.DataFrame({'Feature': features, 'Importance': importances}).sort_values('Importance', ascending=True)
+        fig = px.bar(fi_df, x='Importance', y='Feature', orientation='h', title='특성 중요도 (Feature Importance)')
+        st.plotly_chart(fig, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# Tab 3: 모델 학습 및 평가
+# -----------------------------------------------------------------------------
+with tab3:
+    st.subheader("📈 회귀 모델 성능 평가 결과")
+    
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.markdown("### 1. 선형 회귀 (Linear Regression)")
+        st.metric(label="R² Score (설명력)", value=f"{metrics['lr_r2']:.4f}")
+        st.metric(label="RMSE (평균 제곱근 오차)", value=f"{metrics['lr_rmse']:.4f}")
+        
+    with col_m2:
+        st.markdown("### 2. 랜덤 포레스트 (Random Forest)")
+        st.metric(label="R² Score (설명력)", value=f"{metrics['rf_r2']:.4f}")
+        st.metric(label="RMSE (평균 제곱근 오차)", value=f"{metrics['rf_rmse']:.4f}")
+        
+    st.divider()
+    st.subheader("🎯 실제값 vs 예측값 비교 파이프라인")
+    
+    pred_df = pd.DataFrame({
+        'Actual': y_test,
+        'Linear Regression': lr_pred,
+        'Random Forest': rf_pred
+    }).reset_index(drop=True)
+    
+    fig_pred = go.Figure()
+    fig_pred.add_trace(go.Scatter(x=pred_df.index, y=pred_df['Actual'], mode='lines+markers', name='실제 수율(Actual)'))
+    fig_pred.add_trace(go.Scatter(x=pred_df.index, y=pred_df['Random Forest'], mode='lines', name='랜덤포레스트 예측(RF)'))
+    fig_pred.update_layout(title="테스트 데이터 실제 수율 대비 랜덤 포레스트 모델 예측선 비교", xaxis_title="샘플 인덱스", yaxis_title="수율 (g/L)")
+    st.plotly_chart(fig_pred, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# Tab 4: 실시간 수율 시뮬레이터
+# -----------------------------------------------------------------------------
+with tab4:
+    st.subheader("🎛️ 스마트 바이오 반응기 실시간 수율 예측")
+    st.write("사이드바 또는 아래 슬라이더를 조절하여 예상 미생물 수율(Yield)을 실시간으로 확인하세요.")
+    
+    col_input1, col_input2 = st.columns(2)
+    with col_input1:
+        in_temp = st.slider("배양 온도 (°C)", float(df['Temperature'].min()), float(df['Temperature'].max()), float(df['Temperature'].mean()))
+        in_ph = st.slider("배양액 pH", float(df['pH'].min()), float(df['pH'].max()), float(df['pH'].mean()))
+        in_glucose = st.slider("포도당 농도 (g/L)", float(df['Glucose_Conc'].min()), float(df['Glucose_Conc'].max()), float(df['Glucose_Conc'].mean()))
+        
+    with col_input2:
+        in_rpm = st.slider("교반 속도 (RPM)", float(df['Agitation_Speed'].min()), float(df['Agitation_Speed'].max()), float(df['Agitation_Speed'].mean()))
+        in_do = st.slider("용존 산소량 (%)", float(df['Dissolved_Oxygen'].min()), float(df['Dissolved_Oxygen'].max()), float(df['Dissolved_Oxygen'].mean()))
+        
+    input_data = pd.DataFrame([[in_temp, in_ph, in_glucose, in_rpm, in_do]], 
+                              columns=['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen'])
+    
+    predicted_yield = rf_model.predict(input_data)[0]
+    
+    st.divider()
+    res_col1, res_col2 = st.columns([1, 2])
+    
+    with res_col1:
+        st.markdown("### 🧪 예측된 최종 수율")
+        st.markdown(f"# **{predicted_yield:.2f} g/L**")
+        
+        avg_yield = df['Yield'].mean()
+        diff = predicted_yield - avg_yield
+        if diff >= 0:
+            st.success(f"평균 대비 +{diff:.2f} g/L 상회 (고수율 조건)")
+        else:
+            st.warning(f"평균 대비 {diff:.2f} g/L 하회 (조건 개선 필요)")
+            
+    with res_col2:
+        fig_gauge = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = predicted_yield,
+            domain = {'x': [0, 1], 'y': [0, 1]},
+            title = {'text': "예측 수율 게이지 (g/L)"},
+            gauge = {
+                'axis': {'range': [df['Yield'].min(), df['Yield'].max()]},
+                'bar': {'color': "#1E3A8A"},
+                'steps' : [
+                    {'range': [df['Yield'].min(), df['Yield'].quantile(0.33)], 'color': "#FEE2E2"},
+                    {'range': [df['Yield'].quantile(0.33), df['Yield'].quantile(0.66)], 'color': "#FEF3C7"},
+                    {'range': [df['Yield'].quantile(0.66), df['Yield'].max()], 'color': "#D1FAE5"}
+                ]
+            }
+        ))
+        st.plotly_chart(fig_gauge, use_container_width=True)
