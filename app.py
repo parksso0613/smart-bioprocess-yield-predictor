@@ -34,7 +34,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🧫 실제 미생물 발휴 CSV 데이터 기반 수율 예측 웹앱</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🧫 실제 미생물 발효 CSV 데이터 기반 수율 예측 웹앱</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">실제 배양 공정 데이터셋을 로드하여 독립 변수 탐색, 회귀 모델 평가 및 수율을 예측합니다.</div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
