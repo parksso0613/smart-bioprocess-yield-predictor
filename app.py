@@ -195,19 +195,23 @@ def find_optimal_recipe(_model, data):
     return best_row.to_dict(), best_yield
 
 # -----------------------------------------------------------------------------
-# 4. Streamlit Tabs Layout
+# 4. Streamlit Sidebar & Navigation Layout
 # -----------------------------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 데이터 전처리 및 탐색 (EDA)", 
-    "❓ 소질문 분석", 
-    "🤖 모델 학습 및 평가", 
-    "🎛️ 실시간 수율 시뮬레이터"
-])
+st.sidebar.title("🧫 네비게이션")
+menu = st.sidebar.radio(
+    "메뉴를 선택하세요:",
+    [
+        "📊 데이터 전처리 및 탐색 (EDA)", 
+        "❓ 소질문 분석", 
+        "🤖 모델 학습 및 평가", 
+        "🎛️ 실시간 수율 시뮬레이터"
+    ]
+)
 
 # -----------------------------------------------------------------------------
-# Tab 1: 데이터 전처리 및 탐색
+# Menu 1: 데이터 전처리 및 탐색 (EDA)
 # -----------------------------------------------------------------------------
-with tab1:
+if menu == "📊 데이터 전처리 및 탐색 (EDA)":
     st.subheader("📌 1. 수집된 바이오 공정 데이터셋 요약")
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -227,38 +231,39 @@ with tab1:
     st.plotly_chart(fig_corr, use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# Tab 2: 소질문 시각화 탐색
+# Menu 2: 소질문 분석 (5개 소질문을 가로 탭으로 배치)
 # -----------------------------------------------------------------------------
-with tab2:
+elif menu == "❓ 소질문 분석":
     st.subheader("🔍 보고서 소질문 데이터 시각화 검증")
     
-    q_option = st.selectbox(
-        "확인할 소질문을 선택하세요:",
-        [
-            "소질문 ①: 배양 온도 변화에 따른 미생물 수율 양상",
-            "소질문 ②: pH와 용존산소량(DO)의 상관관계 및 영향력",
-            "소질문 ③: 포도당 농도 증가에 따른 수율 변화 패턴",
-            "소질문 ④: 수율에 영향을 미치는 변수 중요도 분석",
-            "소질문 ⑤: [3D 입체 분석] 온도 x pH 반응 표면 (3D Surface)"
-        ]
-    )
+    q_tab1, q_tab2, q_tab3, q_tab4, q_tab5 = st.tabs([
+        "소질문 ① (온도)",
+        "소질문 ② (pH & DO)",
+        "소질문 ③ (포도당)",
+        "소질문 ④ (변수 중요도)",
+        "소질문 ⑤ (3D 표면)"
+    ])
     
-    if "소질문 ①" in q_option:
+    with q_tab1:
+        st.markdown("### 소질문 ①: 배양 온도 변화에 따른 미생물 수율 양상")
         st.markdown("**분석 결과:** 온도 상승 시 효소 활성이 촉진되지만, 최적 온도 초과 시 불활성화로 인해 수율이 감소하는 최적점 패턴을 보입니다.")
         fig = px.scatter(df, x="Temperature", y="Yield", title="온도 vs 수율 산점도", color="Yield")
         st.plotly_chart(fig, use_container_width=True)
         
-    elif "소질문 ②" in q_option:
+    with q_tab2:
+        st.markdown("### 소질문 ②: pH와 용존산소량(DO)의 상관관계 및 영향력")
         st.markdown("**분석 결과:** pH와 용존산소(DO)는 균체 호흡 및 대사 경로 유지에 필수적이며, pH 균형이 맞춰졌을 때 용존산소 효과가 극대화됩니다.")
         fig = px.scatter(df, x="pH", y="Dissolved_Oxygen", color="Yield", title="pH vs 용존 산소량 (색상: 수율)", size="Yield")
         st.plotly_chart(fig, use_container_width=True)
         
-    elif "소질문 ③" in q_option:
+    with q_tab3:
+        st.markdown("### 소질문 ③: 포도당 농도 증가에 따른 수율 변화 패턴")
         st.markdown("**분석 결과:** 기질(포도당) 농도가 높아짐에 따라 수율이 증가하다가 일정 수치 이상에서는 저해 반응(Inhibition)이 관찰됩니다.")
         fig = px.scatter(df, x="Glucose_Conc", y="Yield", title="포도당 농도 vs 수율", color="Temperature")
         st.plotly_chart(fig, use_container_width=True)
         
-    elif "소질문 ④" in q_option:
+    with q_tab4:
+        st.markdown("### 소질문 ④: 수율에 영향을 미치는 변수 중요도 분석")
         st.markdown("**분석 결과:** 랜덤 포레스트 모델 기반 변수 중요도 추출 결과, 미생물 생산 수율에 가장 결정적인 영향을 미치는 상위 변수를 파악할 수 있습니다.")
         importances = rf_model.feature_importances_
         features = ['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen']
@@ -266,7 +271,8 @@ with tab2:
         fig = px.bar(fi_df, x='Importance', y='Feature', orientation='h', title='특성 중요도 (Feature Importance)')
         st.plotly_chart(fig, use_container_width=True)
 
-    elif "소질문 ⑤" in q_option:
+    with q_tab5:
+        st.markdown("### 소질문 ⑤: [3D 입체 분석] 온도 x pH 반응 표면 (3D Surface)")
         st.markdown("**분석 결과:** 온도(X축)와 pH(Y축)의 연속적 변화에 따른 예측 수율(Z축)을 입체 곡선 산 형태로 시각화했습니다. 산의 정상 부근(붉은 영역)이 최고 수율을 산출하는 최적 배양 구역입니다.")
         
         # Grid 데이터 격자 생성
@@ -309,9 +315,9 @@ with tab2:
         st.plotly_chart(fig_3d, use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# Tab 3: 모델 학습 및 평가
+# Menu 3: 모델 학습 및 평가
 # -----------------------------------------------------------------------------
-with tab3:
+elif menu == "🤖 모델 학습 및 평가":
     st.subheader("📈 회귀 모델 성능 평가 결과")
     
     col_m1, col_m2 = st.columns(2)
@@ -341,9 +347,9 @@ with tab3:
     st.plotly_chart(fig_pred, use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# Tab 4: 실시간 수율 시뮬레이터 & AI 최적 레시피 자동 탐색
+# Menu 4: 실시간 수율 시뮬레이터 & AI 최적 레시피 자동 탐색
 # -----------------------------------------------------------------------------
-with tab4:
+elif menu == "🎛️ 실시간 수율 시뮬레이터":
     st.subheader("🎛️ 스마트 바이오 반응기 실시간 수율 예측")
     st.write("슬라이더를 수동 조절하거나, 아래 **🚀 AI 최적 레시피 자동 추천** 버튼을 눌러 최고의 배양 조건 조합을 자동으로 설정하세요.")
     
