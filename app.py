@@ -219,13 +219,14 @@ with tab2:
             "소질문 ①: 배양 온도 변화에 따른 미생물 수율 양상",
             "소질문 ②: pH와 용존산소량(DO)의 상관관계 및 영향력",
             "소질문 ③: 포도당 농도 증가에 따른 수율 변화 패턴",
-            "소질문 ④: 수율에 영향을 미치는 변수 중요도 분석"
+            "소질문 ④: 수율에 영향을 미치는 변수 중요도 분석",
+            "소질문 ⑤: [3D 입체 분석] 온도 x pH 반응 표면 (3D Surface)"
         ]
     )
     
     if "소질문 ①" in q_option:
         st.markdown("**분석 결과:** 온도 상승 시 효소 활성이 촉진되지만, 최적 온도 초과 시 불활성화로 인해 수율이 감소하는 최적점 패턴을 보입니다.")
-        fig = px.scatter(df, x="Temperature", y="Yield", trendline="lowess", title="온도 vs 수율 산점도", color="Yield")
+        fig = px.scatter(df, x="Temperature", y="Yield", title="온도 vs 수율 산점도", color="Yield")
         st.plotly_chart(fig, use_container_width=True)
         
     elif "소질문 ②" in q_option:
@@ -235,7 +236,7 @@ with tab2:
         
     elif "소질문 ③" in q_option:
         st.markdown("**분석 결과:** 기질(포도당) 농도가 높아짐에 따라 수율이 증가하다가 일정 수치 이상에서는 저해 반응(Inhibition)이 관찰됩니다.")
-        fig = px.scatter(df, x="Glucose_Conc", y="Yield", trendline="ols", title="포도당 농도 vs 수율", color="Temperature")
+        fig = px.scatter(df, x="Glucose_Conc", y="Yield", title="포도당 농도 vs 수율", color="Temperature")
         st.plotly_chart(fig, use_container_width=True)
         
     elif "소질문 ④" in q_option:
@@ -245,6 +246,48 @@ with tab2:
         fi_df = pd.DataFrame({'Feature': features, 'Importance': importances}).sort_values('Importance', ascending=True)
         fig = px.bar(fi_df, x='Importance', y='Feature', orientation='h', title='특성 중요도 (Feature Importance)')
         st.plotly_chart(fig, use_container_width=True)
+
+    elif "소질문 ⑤" in q_option:
+        st.markdown("**분석 결과:** 온도(X축)와 pH(Y축)의 연속적 변화에 따른 예측 수율(Z축)을 입체 곡선 산 형태로 시각화했습니다. 산의 정상 부근(붉은 영역)이 최고 수율을 산출하는 최적 배양 구역입니다.")
+        
+        # Grid 데이터 격자 생성
+        temp_range = np.linspace(df['Temperature'].min(), df['Temperature'].max(), 30)
+        ph_range = np.linspace(df['pH'].min(), df['pH'].max(), 30)
+        T_grid, P_grid = np.meshgrid(temp_range, ph_range)
+        
+        # 나머지 변수들은 평균값으로 고정하여 예측
+        fixed_glucose = df['Glucose_Conc'].mean()
+        fixed_rpm = df['Agitation_Speed'].mean()
+        fixed_do = df['Dissolved_Oxygen'].mean()
+        
+        grid_data = pd.DataFrame({
+            'Temperature': T_grid.ravel(),
+            'pH': P_grid.ravel(),
+            'Glucose_Conc': fixed_glucose,
+            'Agitation_Speed': fixed_rpm,
+            'Dissolved_Oxygen': fixed_do
+        })
+        
+        Z_grid = rf_model.predict(grid_data).reshape(T_grid.shape)
+        
+        fig_3d = go.Figure(data=[go.Surface(
+            x=temp_range, 
+            y=ph_range, 
+            z=Z_grid, 
+            colorscale='Viridis'
+        )])
+        
+        fig_3d.update_layout(
+            title='온도 x pH 따른 예측 수율 3D 반응 표면 (Response Surface)',
+            scene=dict(
+                xaxis_title='온도 (°C)',
+                yaxis_title='pH 지수',
+                zaxis_title='예측 수율 (g/L)'
+            ),
+            autosize=True,
+            margin=dict(l=20, r=20, b=20, t=50)
+        )
+        st.plotly_chart(fig_3d, use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # Tab 3: 모델 학습 및 평가
