@@ -175,6 +175,25 @@ def train_models(data):
 
 lr_model, rf_model, metrics, X_test, y_test, lr_pred, rf_pred = train_models(df)
 
+# 최적 레시피 탐색 (Grid Search) 함수
+@st.cache_data
+def find_optimal_recipe(_model, data):
+    t_grid = np.linspace(data['Temperature'].min(), data['Temperature'].max(), 15)
+    p_grid = np.linspace(data['pH'].min(), data['pH'].max(), 15)
+    g_grid = np.linspace(data['Glucose_Conc'].min(), data['Glucose_Conc'].max(), 10)
+    rpm_grid = np.linspace(data['Agitation_Speed'].min(), data['Agitation_Speed'].max(), 5)
+    do_grid = np.linspace(data['Dissolved_Oxygen'].min(), data['Dissolved_Oxygen'].max(), 5)
+    
+    grid = np.array(np.meshgrid(t_grid, p_grid, g_grid, rpm_grid, do_grid)).T.reshape(-1, 5)
+    grid_df = pd.DataFrame(grid, columns=['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen'])
+    
+    preds = _model.predict(grid_df)
+    best_idx = np.argmax(preds)
+    best_row = grid_df.iloc[best_idx]
+    best_yield = preds[best_idx]
+    
+    return best_row.to_dict(), best_yield
+
 # -----------------------------------------------------------------------------
 # 4. Streamlit Tabs Layout
 # -----------------------------------------------------------------------------
@@ -322,21 +341,45 @@ with tab3:
     st.plotly_chart(fig_pred, use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# Tab 4: 실시간 수율 시뮬레이터
+# Tab 4: 실시간 수율 시뮬레이터 & AI 최적 레시피 자동 탐색
 # -----------------------------------------------------------------------------
 with tab4:
     st.subheader("🎛️ 스마트 바이오 반응기 실시간 수율 예측")
-    st.write("사이드바 또는 아래 슬라이더를 조절하여 예상 미생물 수율(Yield)을 실시간으로 확인하세요.")
+    st.write("슬라이더를 수동 조절하거나, 아래 **🚀 AI 최적 레시피 자동 추천** 버튼을 눌러 최고의 배양 조건 조합을 자동으로 설정하세요.")
     
+    # Session State 초기화
+    if 'sim_temp' not in st.session_state:
+        st.session_state.sim_temp = float(df['Temperature'].mean())
+    if 'sim_ph' not in st.session_state:
+        st.session_state.sim_ph = float(df['pH'].mean())
+    if 'sim_glucose' not in st.session_state:
+        st.session_state.sim_glucose = float(df['Glucose_Conc'].mean())
+    if 'sim_rpm' not in st.session_state:
+        st.session_state.sim_rpm = float(df['Agitation_Speed'].mean())
+    if 'sim_do' not in st.session_state:
+        st.session_state.sim_do = float(df['Dissolved_Oxygen'].mean())
+
+    # Auto-Optimizer 버튼
+    col_opt1, col_opt2 = st.columns([1, 3])
+    with col_opt1:
+        if st.button("🚀 AI 최적 레시피 자동 탐색", use_container_width=True, type="primary"):
+            best_config, max_y = find_optimal_recipe(rf_model, df)
+            st.session_state.sim_temp = float(best_config['Temperature'])
+            st.session_state.sim_ph = float(best_config['pH'])
+            st.session_state.sim_glucose = float(best_config['Glucose_Conc'])
+            st.session_state.sim_rpm = float(best_config['Agitation_Speed'])
+            st.session_state.sim_do = float(best_config['Dissolved_Oxygen'])
+            st.success(f"✨ AI가 최적 수율({max_y:.2f} g/L) 조건을 찾아 적용했습니다!")
+            
     col_input1, col_input2 = st.columns(2)
     with col_input1:
-        in_temp = st.slider("배양 온도 (°C)", float(df['Temperature'].min()), float(df['Temperature'].max()), float(df['Temperature'].mean()))
-        in_ph = st.slider("배양액 pH", float(df['pH'].min()), float(df['pH'].max()), float(df['pH'].mean()))
-        in_glucose = st.slider("포도당 농도 (g/L)", float(df['Glucose_Conc'].min()), float(df['Glucose_Conc'].max()), float(df['Glucose_Conc'].mean()))
+        in_temp = st.slider("배양 온도 (°C)", float(df['Temperature'].min()), float(df['Temperature'].max()), key="sim_temp")
+        in_ph = st.slider("배양액 pH", float(df['pH'].min()), float(df['pH'].max()), key="sim_ph")
+        in_glucose = st.slider("포도당 농도 (g/L)", float(df['Glucose_Conc'].min()), float(df['Glucose_Conc'].max()), key="sim_glucose")
         
     with col_input2:
-        in_rpm = st.slider("교반 속도 (RPM)", float(df['Agitation_Speed'].min()), float(df['Agitation_Speed'].max()), float(df['Agitation_Speed'].mean()))
-        in_do = st.slider("용존 산소량 (%)", float(df['Dissolved_Oxygen'].min()), float(df['Dissolved_Oxygen'].max()), float(df['Dissolved_Oxygen'].mean()))
+        in_rpm = st.slider("교반 속도 (RPM)", float(df['Agitation_Speed'].min()), float(df['Agitation_Speed'].max()), key="sim_rpm")
+        in_do = st.slider("용존 산소량 (%)", float(df['Dissolved_Oxygen'].min()), float(df['Dissolved_Oxygen'].max()), key="sim_do")
         
     input_data = pd.DataFrame([[in_temp, in_ph, in_glucose, in_rpm, in_do]], 
                               columns=['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen'])
