@@ -353,24 +353,66 @@ elif menu == "🤖 모델 학습 및 평가":
     
     st.divider()
     
-    comp_df = pd.DataFrame({
-        'Sample Index': range(len(y_test)),
-        '실제 수율 (Actual)': y_test.values,
-        '선형 회귀 예측 (Linear)': lr_pred,
-        '랜덤 포레스트 예측 (RF)': rf_pred
-    }).head(40)
+    eval_col1, eval_col2 = st.columns(2)
     
-    fig_comp = go.Figure()
-    fig_comp.add_trace(go.Scatter(x=comp_df['Sample Index'], y=comp_df['실제 수율 (Actual)'], mode='lines+markers', name='실제 수율 (Actual)', line=dict(color='black', width=3)))
-    fig_comp.add_trace(go.Scatter(x=comp_df['Sample Index'], y=comp_df['선형 회귀 예측 (Linear)'], mode='lines', name='선형 회귀 예측', line=dict(color='blue', dash='dash')))
-    fig_comp.add_trace(go.Scatter(x=comp_df['Sample Index'], y=comp_df['랜덤 포레스트 예측 (RF)'], mode='lines+markers', name='랜덤 포레스트 예측', line=dict(color='green')))
-    
-    fig_comp.update_layout(
-        title="테스트 데이터 실제 수율 vs 모델별 예측 수율 비교 (상위 40개 샘플)",
-        xaxis_title="테스트 배치 샘플 번호",
-        yaxis_title="생산 수율 (g/L)"
-    )
-    st.plotly_chart(fig_comp, use_container_width=True)
+    with eval_col1:
+        # 실제값 vs 예측값 산점도 (이상적 예측선 y=x 포함)
+        fig_scatter = go.Figure()
+        fig_scatter.add_trace(go.Scatter(
+            x=y_test, y=lr_pred, mode='markers', name='선형 회귀 (Linear)',
+            marker=dict(color='#64748B', size=8, opacity=0.65)
+        ))
+        fig_scatter.add_trace(go.Scatter(
+            x=y_test, y=rf_pred, mode='markers', name='랜덤 포레스트 (RF)',
+            marker=dict(color='#2563EB', size=9, opacity=0.85)
+        ))
+        min_val, max_val = float(y_test.min()), float(y_test.max())
+        fig_scatter.add_trace(go.Scatter(
+            x=[min_val, max_val], y=[min_val, max_val], mode='lines', name='이상적 예측선 (y=x)',
+            line=dict(color='#EF4444', dash='dash', width=2)
+        ))
+        fig_scatter.update_layout(
+            title="실제 수율 vs 모델별 예측 수율 일치도 (y=x에 가까울수록 정확)",
+            xaxis_title="실제 수율 (Actual Yield, g/L)",
+            yaxis_title="예측 수율 (Predicted Yield, g/L)",
+            template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True)
+        
+    with eval_col2:
+        # 샘플별 추이 비교 그래프 (깔끔한 파스텔/모던 컬러)
+        comp_df = pd.DataFrame({
+            'Sample Index': range(len(y_test)),
+            '실제 수율 (Actual)': y_test.values,
+            '선형 회귀 예측': lr_pred,
+            '랜덤 포레스트 예측': rf_pred
+        }).head(30)
+        
+        fig_line = go.Figure()
+        fig_line.add_trace(go.Scatter(
+            x=comp_df['Sample Index'], y=comp_df['실제 수율 (Actual)'], 
+            mode='lines+markers', name='실제 수율', 
+            line=dict(color='#1E293B', width=2.5), marker=dict(size=6)
+        ))
+        fig_line.add_trace(go.Scatter(
+            x=comp_df['Sample Index'], y=comp_df['선형 회귀 예측'], 
+            mode='lines', name='선형 회귀', 
+            line=dict(color='#94A3B8', width=2, dash='dot')
+        ))
+        fig_line.add_trace(go.Scatter(
+            x=comp_df['Sample Index'], y=comp_df['랜덤 포레스트 예측'], 
+            mode='lines+markers', name='랜덤 포레스트', 
+            line=dict(color='#0EA5E9', width=2.5), marker=dict(size=6)
+        ))
+        fig_line.update_layout(
+            title="테스트 샘플별 실제값 vs 예측값 추이 비교 (상위 30개)",
+            xaxis_title="테스트 배치 샘플 번호",
+            yaxis_title="생산 수율 (g/L)",
+            template="plotly_white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # Menu 4: 실시간 수율 시뮬레이터 & AI 최적/최저 레시피 자동 탐색
@@ -389,27 +431,38 @@ elif menu == "🎛️ 실시간 수율 시뮬레이터":
         st.session_state.sim_rpm = float(df['Agitation_Speed'].mean())
     if 'sim_do' not in st.session_state:
         st.session_state.sim_do = float(df['Dissolved_Oxygen'].mean())
+    if 'recipe_mode' not in st.session_state:
+        st.session_state.recipe_mode = "best"
 
     col_opt1, col_opt2, col_opt3 = st.columns([1.2, 1.2, 1.6])
     with col_opt1:
-        if st.button("🚀 AI 최적(최고 수율) 레시피", use_container_width=True, type="primary"):
+        best_btn_type = "primary" if st.session_state.recipe_mode == "best" else "secondary"
+        if st.button("🚀 AI 최적(최고 수율) 레시피", use_container_width=True, type=best_btn_type):
+            st.session_state.recipe_mode = "best"
             best_config, max_y, _, _ = find_extreme_recipes(rf_model, df)
             st.session_state.sim_temp = float(best_config['Temperature'])
             st.session_state.sim_ph = float(best_config['pH'])
             st.session_state.sim_glucose = float(best_config['Glucose_Conc'])
             st.session_state.sim_rpm = float(best_config['Agitation_Speed'])
             st.session_state.sim_do = float(best_config['Dissolved_Oxygen'])
-            st.success(f"✨ AI가 최고 수율({max_y:.2f} g/L) 조건을 찾아 적용했습니다!")
+            st.rerun()
             
     with col_opt2:
-        if st.button("⚠️ AI 최저 수율 레시피", use_container_width=True):
+        worst_btn_type = "primary" if st.session_state.recipe_mode == "worst" else "secondary"
+        if st.button("⚠️ AI 최저 수율 레시피", use_container_width=True, type=worst_btn_type):
+            st.session_state.recipe_mode = "worst"
             _, _, worst_config, min_y = find_extreme_recipes(rf_model, df)
             st.session_state.sim_temp = float(worst_config['Temperature'])
             st.session_state.sim_ph = float(worst_config['pH'])
             st.session_state.sim_glucose = float(worst_config['Glucose_Conc'])
             st.session_state.sim_rpm = float(worst_config['Agitation_Speed'])
             st.session_state.sim_do = float(worst_config['Dissolved_Oxygen'])
-            st.error(f"🚨 AI가 최저 수율({min_y:.2f} g/L) 실패 조건을 찾아 적용했습니다!")
+            st.rerun()
+
+    if st.session_state.recipe_mode == "best":
+        st.caption("✨ 현재 **최적(최고 수율) 레시피** 탐색 모드가 활성화되어 있습니다.")
+    else:
+        st.caption("🚨 현재 **최저 수율 실패 조건** 탐색 모드가 활성화되어 있습니다.")
             
     col_input1, col_input2 = st.columns(2)
     with col_input1:
