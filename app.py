@@ -353,66 +353,24 @@ elif menu == "🤖 모델 학습 및 평가":
     
     st.divider()
     
-    eval_col1, eval_col2 = st.columns(2)
+    st.markdown("### 📈 실제 수율 vs 모델별 예측 수율 비교 그래프")
+    comp_df = pd.DataFrame({
+        'Sample Index': range(len(y_test)),
+        '실제 수율 (Actual)': y_test.values,
+        '선형 회귀 예측 (Linear)': lr_pred,
+        '랜덤 포레스트 예측 (RF)': rf_pred
+    }).head(30)
     
-    with eval_col1:
-        # 실제값 vs 예측값 산점도 (이상적 예측선 y=x 포함)
-        fig_scatter = go.Figure()
-        fig_scatter.add_trace(go.Scatter(
-            x=y_test, y=lr_pred, mode='markers', name='선형 회귀 (Linear)',
-            marker=dict(color='#64748B', size=8, opacity=0.65)
-        ))
-        fig_scatter.add_trace(go.Scatter(
-            x=y_test, y=rf_pred, mode='markers', name='랜덤 포레스트 (RF)',
-            marker=dict(color='#2563EB', size=9, opacity=0.85)
-        ))
-        min_val, max_val = float(y_test.min()), float(y_test.max())
-        fig_scatter.add_trace(go.Scatter(
-            x=[min_val, max_val], y=[min_val, max_val], mode='lines', name='이상적 예측선 (y=x)',
-            line=dict(color='#EF4444', dash='dash', width=2)
-        ))
-        fig_scatter.update_layout(
-            title="실제 수율 vs 모델별 예측 수율 일치도 (y=x에 가까울수록 정확)",
-            xaxis_title="실제 수율 (Actual Yield, g/L)",
-            yaxis_title="예측 수율 (Predicted Yield, g/L)",
-            template="plotly_white",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig_scatter, use_container_width=True)
-        
-    with eval_col2:
-        # 샘플별 추이 비교 그래프 (깔끔한 파스텔/모던 컬러)
-        comp_df = pd.DataFrame({
-            'Sample Index': range(len(y_test)),
-            '실제 수율 (Actual)': y_test.values,
-            '선형 회귀 예측': lr_pred,
-            '랜덤 포레스트 예측': rf_pred
-        }).head(30)
-        
-        fig_line = go.Figure()
-        fig_line.add_trace(go.Scatter(
-            x=comp_df['Sample Index'], y=comp_df['실제 수율 (Actual)'], 
-            mode='lines+markers', name='실제 수율', 
-            line=dict(color='#1E293B', width=2.5), marker=dict(size=6)
-        ))
-        fig_line.add_trace(go.Scatter(
-            x=comp_df['Sample Index'], y=comp_df['선형 회귀 예측'], 
-            mode='lines', name='선형 회귀', 
-            line=dict(color='#94A3B8', width=2, dash='dot')
-        ))
-        fig_line.add_trace(go.Scatter(
-            x=comp_df['Sample Index'], y=comp_df['랜덤 포레스트 예측'], 
-            mode='lines+markers', name='랜덤 포레스트', 
-            line=dict(color='#0EA5E9', width=2.5), marker=dict(size=6)
-        ))
-        fig_line.update_layout(
-            title="테스트 샘플별 실제값 vs 예측값 추이 비교 (상위 30개)",
-            xaxis_title="테스트 배치 샘플 번호",
-            yaxis_title="생산 수율 (g/L)",
-            template="plotly_white",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig_line, use_container_width=True)
+    fig_comp = go.Figure()
+    fig_comp.add_trace(go.Scatter(x=comp_df['Sample Index'], y=comp_df['실제 수율 (Actual)'], mode='lines+markers', name='실제 수율 (Actual)'))
+    fig_comp.add_trace(go.Scatter(x=comp_df['Sample Index'], y=comp_df['선형 회귀 예측 (Linear)'], mode='lines+markers', name='선형 회귀 예측'))
+    fig_comp.add_trace(go.Scatter(x=comp_df['Sample Index'], y=comp_df['랜덤 포레스트 예측 (RF)'], mode='lines+markers', name='랜덤 포레스트 예측'))
+    fig_comp.update_layout(
+        title="테스트 데이터 샘플별 실제 수율 vs 모델 예측값 비교 (상위 30개)",
+        xaxis_title="테스트 샘플 번호",
+        yaxis_title="생산 수율 (g/L)"
+    )
+    st.plotly_chart(fig_comp, use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # Menu 4: 실시간 수율 시뮬레이터 & AI 최적/최저 레시피 자동 탐색
