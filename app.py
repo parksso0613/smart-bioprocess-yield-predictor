@@ -269,9 +269,8 @@ elif menu == "❓ 소질문 분석":
         st.markdown("### [소질문 ①] 배양 온도 변화에 따라 미생물 수율은 어떠한 양상을 보이는가?")
         fig1 = px.scatter(
             df, x="Temperature", y="Yield", 
-            color="Yield", color_continuous_scale="Viridis",
             title="온도(Temperature) vs 생산 수율(Yield) 산점도",
-            labels={"Temperature": "배양 온도 / 열교환 지표", "Yield": "생산 수율 (g/L)"}
+            labels={"Temperature": "배양 온도 (°C)", "Yield": "생산 수율 (g/L)"}
         )
         st.plotly_chart(fig1, use_container_width=True)
         st.info("💡 **분석 요약:** 배양 온도가 적정 범위를 벗어나 과도하게 낮거나 높아질 경우 대사 활성 저하로 인해 수율이 변동하는 양상을 확인할 수 있습니다.")
@@ -280,9 +279,8 @@ elif menu == "❓ 소질문 분석":
         st.markdown("### [소질문 ②] pH와 용존산소량(DO)의 상관관계 및 수율에 미치는 영향력은 어떠한가?")
         fig2 = px.scatter(
             df, x="pH", y="Dissolved_Oxygen", size="Yield", color="Yield",
-            color_continuous_scale="Plasma",
             title="pH와 용존산소(DO) 분포에 따른 수율 크기(Bubble Chart)",
-            labels={"pH": "pH 제어 지표", "Dissolved_Oxygen": "용존 산소 / 대사 지표 (DO)"}
+            labels={"pH": "pH 지수", "Dissolved_Oxygen": "용존 산소량 (DO, %)"}
         )
         st.plotly_chart(fig2, use_container_width=True)
         st.info("💡 **분석 요약:** 원의 크기와 색상이 밝을수록 높은 수율을 의미하며, 특정 pH 구간에서 용존 산소가 안정적으로 공급될 때 생산성이 극대화됩니다.")
@@ -292,11 +290,11 @@ elif menu == "❓ 소질문 분석":
         fig3 = px.scatter(
             df, x="Glucose_Conc", y="Yield",
             color="Agitation_Speed",
-            title="기질 농도(Glucose_Conc) vs 생산 수율(Yield) 관계 분석",
-            labels={"Glucose_Conc": "기질 공급량", "Yield": "생산 수율 (g/L)", "Agitation_Speed": "교반/통기 지표"}
+            title="포도당 농도(Glucose_Conc) vs 생산 수율(Yield) 관계 분석",
+            labels={"Glucose_Conc": "포도당 농도 (g/L)", "Yield": "생산 수율 (g/L)", "Agitation_Speed": "교반 속도 (RPM)"}
         )
         st.plotly_chart(fig3, use_container_width=True)
-        st.info("💡 **분석 요약:** 초기 기질 농도 상승에 따라 수율이 증가하지만, 과도한 기질 투입 구간에서는 오히려 수율이 정체되거나 감소하는 비선형 패턴을 보입니다.")
+        st.info("💡 **분석 요약:** 초기 포도당 농도 상승에 따라 수율이 증가하지만, 과도한 기질 투입 구간에서는 오히려 수율이 정체되거나 감소하는 비선형 패턴을 보입니다.")
 
     with sub_tab4:
         st.markdown("### [소질문 ④] 수율을 결정짓는 5가지 독립 변수 중 가장 영향력이 큰 핵심 요인은 무엇인가?")
@@ -308,7 +306,6 @@ elif menu == "❓ 소질문 분석":
         
         fig4 = px.bar(
             feat_df, x='Importance', y='Feature', orientation='h',
-            color='Importance', color_continuous_scale='Blues',
             title="랜덤 포레스트 모델 기준 변수 중요도 (Feature Importance)"
         )
         st.plotly_chart(fig4, use_container_width=True)
@@ -329,15 +326,18 @@ elif menu == "❓ 소질문 분석":
         })
         z_pred = rf_model.predict(grid_3d).reshape(t_mesh.shape)
         
-        fig5 = go.Figure(data=[go.Surface(z=z_pred, x=t_range, y=p_range, colorscale='Viridis')])
+        fig5 = go.Figure(data=[go.Surface(z=z_pred, x=t_range, y=p_range)])
         fig5.update_layout(
             title='온도(X) × pH(Y) 변화에 따른 AI 예측 수율(Z) 3D 반응 표면 그래프',
             scene=dict(
-                xaxis_title='온도 지표 (X)',
-                yaxis_title='pH 지표 (Y)',
+                xaxis_title='배양 온도 (X)',
+                yaxis_title='pH 지수 (Y)',
                 zaxis_title='예측 수율 g/L (Z)'
             ),
             height=600
+        )
+        st.plotly_chart(fig5, use_container_width=True)
+        st.info("💡 **3D 입체 분석:** 그래프를 마우스로 드래그해 회전시켜 보세요! 가장 높게 솟아오른 봉우리 영역이 최고 수율을 산출하는 최적 배양 구역입니다.")
         )
         st.plotly_chart(fig5, use_container_width=True)
         st.info("💡 **3D 입체 분석:** 그래프를 마우스로 드래그해 회전시켜 보세요! 가장 높게 솟아오른 노란색 봉우리 영역이 최고 수율을 산출하는 최적 배양 구역입니다.")
