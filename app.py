@@ -230,25 +230,26 @@ menu = st.sidebar.radio(
 # Menu 1: 데이터 전처리 및 탐색 (EDA)
 # -----------------------------------------------------------------------------
 if menu == "📊 데이터 전처리 및 탐색 (EDA)":
-    st.subheader("1️⃣ 로드된 배양 공정 데이터셋 미리보기 (상위 10행)")
-    st.dataframe(df.head(10), use_container_width=True)
+    st.subheader("📌 1. 수집된 바이오 공정 데이터셋 요약")
     
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns([1.8, 1])
     with col1:
-        st.subheader("2️⃣ 기초 통계량 요약 (Describe)")
-        st.dataframe(df.describe().round(2), use_container_width=True)
+        st.dataframe(df.head(10), use_container_width=True)
         
     with col2:
-        st.subheader("3️⃣ 변수 간 상관관계 히트맵 (Correlation Matrix)")
-        corr = df.corr()
-        fig_corr = px.imshow(
-            corr, 
-            text_auto=".2f", 
-            color_continuous_scale="RdBu_r",
-            aspect="auto",
-            title="독립 변수 및 생산 수율(Yield) 간 상관계수"
-        )
-        st.plotly_chart(fig_corr, use_container_width=True)
+        st.markdown("**데이터 기초 통계량:**")
+        st.dataframe(df.describe().T[['mean', 'std', 'min', 'max']].round(4), use_container_width=True)
+        
+    st.subheader("📌 2. 독립 변수 간 상관관계 분석 (Correlation Matrix)")
+    st.markdown("**배양 변수 및 수율 간 상관계수 히트맵**")
+    corr = df.corr()
+    fig_corr = px.imshow(
+        corr, 
+        text_auto=".2f", 
+        color_continuous_scale="Blues",
+        aspect="auto"
+    )
+    st.plotly_chart(fig_corr, use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # Menu 2: 소질문 분석 (가로 5개 탭 구성)
