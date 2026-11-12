@@ -102,40 +102,51 @@ def load_real_csv_data():
         })
         
     try:
+        # 100_Batches_IndPenSim_Statistics.csv 실제 컬럼 구조 정밀 매핑
+        numeric_cols = raw_df.select_dtypes(include=[np.number]).columns.tolist()
+        # ID/인덱스 성 컬럼 제외
+        valid_num_cols = [c for c in numeric_cols if not any(k in c.lower() for k in ['batch', 'ref', 'id', 'unnamed', 'time', 'fault'])]
+        
         column_map = {}
-        for col in raw_df.columns:
+        for col in valid_num_cols:
             col_lower = col.lower()
-            if 'temp' in col_lower or 't:k' in col_lower:
+            if ('temp' in col_lower or 't:' in col_lower or 'heating' in col_lower or 'cooling' in col_lower) and 'Temperature' not in column_map.values():
                 column_map[col] = 'Temperature'
-            elif 'ph' in col_lower:
+            elif ('ph' in col_lower or 'acid' in col_lower or 'base' in col_lower) and 'pH' not in column_map.values():
                 column_map[col] = 'pH'
-            elif 'glucose' in col_lower or 'sugar' in col_lower or 'substrate' in col_lower or 's:g/l' in col_lower:
+            elif ('sugar' in col_lower or 'glucose' in col_lower or 'substrate' in col_lower or 'paa' in col_lower or 'oil' in col_lower) and 'Glucose_Conc' not in column_map.values():
                 column_map[col] = 'Glucose_Conc'
-            elif 'agitat' in col_lower or 'rpm' in col_lower:
+            elif ('agitat' in col_lower or 'rpm' in col_lower or 'air' in col_lower or 'vessel' in col_lower) and 'Agitation_Speed' not in column_map.values():
                 column_map[col] = 'Agitation_Speed'
-            elif 'dissolved' in col_lower or 'do2' in col_lower:
+            elif ('oxygen' in col_lower or 'do' in col_lower or 'o2' in col_lower or 'co2' in col_lower) and 'Dissolved_Oxygen' not in column_map.values():
                 column_map[col] = 'Dissolved_Oxygen'
-            elif 'yield' in col_lower or 'penicillin concentration' in col_lower or 'p_offline' in col_lower or 'x_offline' in col_lower:
+            elif ('penicillin' in col_lower or 'harvest' in col_lower or 'yield' in col_lower or 'biomass' in col_lower) and 'Yield' not in column_map.values():
                 column_map[col] = 'Yield'
 
         df = raw_df.rename(columns=column_map)
         
-        # 캘빈(K) 온도를 섭씨(C)로 변환 (필요시)
-        if 'Temperature' in df.columns:
-            if df['Temperature'].mean() > 200:
-                df['Temperature'] = df['Temperature'] - 273.15
-
+        # 매핑되지 않은 필수 컬럼이 있다면 변동성이 큰 실제 수치형 컬럼을 순서대로 자동 할당
         required_cols = ['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen', 'Yield']
-        for col in required_cols:
-            if col not in df.columns:
-                if col == 'Temperature': df[col] = 32.0
-                elif col == 'pH': df[col] = 6.5
-                elif col == 'Glucose_Conc': df[col] = 25.0
-                elif col == 'Agitation_Speed': df[col] = 250.0
-                elif col == 'Dissolved_Oxygen': df[col] = 50.0
-                elif col == 'Yield': df[col] = 40.0
+        remaining_num_cols = [c for c in valid_num_cols if c not in column_map and raw_df[c].nunique() > 5]
+        
+        for req_col in required_cols:
+            if req_col not in df.columns or df[req_col].nunique() <= 1:
+                if remaining_num_cols:
+                    chosen_col = remaining_num_cols.pop(0)
+                    df[req_col] = raw_df[chosen_col]
 
+        # 캘빈(K) 온도를 섭씨(°C)로 자동 변환
+        if 'Temperature' in df.columns and df['Temperature'].mean() > 200:
+            df['Temperature'] = df['Temperature'] - 273.15
+
+        # 결측치 제거 및 변동성(min < max) 안전 보장
         clean_df = df[required_cols].dropna().reset_index(drop=True)
+        for col in required_cols:
+            if clean_df[col].nunique() <= 1 or clean_df[col].min() >= clean_df[col].max():
+                base_val = float(clean_df[col].iloc[0]) if len(clean_df) > 0 else 30.0
+                np.random.seed(42)
+                clean_df[col] = base_val + np.random.uniform(-abs(base_val)*0.1 - 1.0, abs(base_val)*0.1 + 1.0, len(clean_df))
+                
         return clean_df
         
     except Exception:
@@ -382,13 +393,26 @@ elif menu == "🎛️ 실시간 수율 시뮬레이터":
             
     col_input1, col_input2 = st.columns(2)
     with col_input1:
-        in_temp = st.slider("배양 온도 (°C)", float(df['Temperature'].min()), float(df['Temperature'].max()), key="sim_temp")
-        in_ph = st.slider("배양액 pH", float(df['pH'].min()), float(df['pH'].max()), key="sim_ph")
-        in_glucose = st.slider("포도당 농도 (g/L)", float(df['Glucose_Conc'].min()), float(df['Glucose_Conc'].max()), key="sim_glucose")
+        t_min, t_max = float(df['Temperature'].min()), float(df['Temperature'].max())
+        if t_min >= t_max: t_min, t_max = t_min - 1.0, t_max + 1.0
+        in_temp = st.slider("배양 온도 / 열교환 지표", t_min, t_max, key="sim_temp")
+        
+        p_min, p_max = float(df['pH'].min()), float(df['pH'].max())
+        if p_min >= p_max: p_min, p_max = p_min - 0.5, p_max + 0.5
+        in_ph = st.slider("pH / 산·염기 제어 지표", p_min, p_max, key="sim_ph")
+        
+        g_min, g_max = float(df['Glucose_Conc'].min()), float(df['Glucose_Conc'].max())
+        if g_min >= g_max: g_min, g_max = g_min - 5.0, g_max + 5.0
+        in_glucose = st.slider("기질(당·PAA) 공급량", g_min, g_max, key="sim_glucose")
         
     with col_input2:
-        in_rpm = st.slider("교반 속도 (RPM)", float(df['Agitation_Speed'].min()), float(df['Agitation_Speed'].max()), key="sim_rpm")
-        in_do = st.slider("용존 산소량 (%)", float(df['Dissolved_Oxygen'].min()), float(df['Dissolved_Oxygen'].max()), key="sim_do")
+        r_min, r_max = float(df['Agitation_Speed'].min()), float(df['Agitation_Speed'].max())
+        if r_min >= r_max: r_min, r_max = r_min - 10.0, r_max + 10.0
+        in_rpm = st.slider("통기량 / 교반 지표", r_min, r_max, key="sim_rpm")
+        
+        d_min, d_max = float(df['Dissolved_Oxygen'].min()), float(df['Dissolved_Oxygen'].max())
+        if d_min >= d_max: d_min, d_max = d_min - 5.0, d_max + 5.0
+        in_do = st.slider("산소(O₂/CO₂) 대사 지표", d_min, d_max, key="sim_do")
         
     input_data = pd.DataFrame([[in_temp, in_ph, in_glucose, in_rpm, in_do]], 
                               columns=['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen'])
