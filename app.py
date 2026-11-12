@@ -243,13 +243,18 @@ if menu == "📊 데이터 전처리 및 탐색 (EDA)":
     st.subheader("📌 2. 독립 변수 간 상관관계 분석 (Correlation Matrix)")
     st.markdown("**배양 변수 및 수율 간 상관계수 히트맵**")
     corr = df.corr()
-    fig_corr = px.imshow(
-        corr, 
-        text_auto=".2f", 
-        color_continuous_scale="Blues",
-        aspect="auto"
-    )
-    st.plotly_chart(fig_corr, use_container_width=True)
+    
+    # 히트맵을 가운데 정렬하고 가로로 너무 퍼지지 않게 열 너비 제한
+    hm_col1, hm_col2, hm_col3 = st.columns([0.5, 2, 0.5])
+    with hm_col2:
+        fig_corr = px.imshow(
+            corr, 
+            text_auto=".2f", 
+            color_continuous_scale="Blues",
+            aspect="equal"
+        )
+        fig_corr.update_layout(height=450, margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig_corr, use_container_width=True)
 
 # -----------------------------------------------------------------------------
 # Menu 2: 소질문 분석 (가로 5개 탭 구성)
