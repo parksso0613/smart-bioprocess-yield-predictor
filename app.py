@@ -45,25 +45,34 @@ st.markdown('<div class="main-title">🧫 실제 미생물 발효 CSV 데이터 
 st.markdown('<div class="sub-title">실제 배양 공정 데이터셋을 로드하여 독립 변수 탐색, 회귀 모델 평가 및 수율을 예측합니다.</div>', unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. Real CSV Data Loading & Caching Function
+# 2. Real CSV Data Loading & Caching Function (GitHub Raw URL 우선 로드)
 # -----------------------------------------------------------------------------
 @st.cache_data
 def load_real_csv_data():
-    """CSV 데이터를 안전하게 로드하고 6개 핵심 컬럼으로 자동 정리하는 함수"""
-    possible_files = [
-        "100_Batches_IndPenSim_Statistics_2.csv",
-        "100_Batches_IndPenSim_Statistics.csv",
-        "fermentation_data.csv"
-    ]
+    """GitHub Raw URL 및 로컬 CSV 데이터를 안전하게 로드하고 6개 핵심 컬럼으로 자동 정리하는 함수"""
+    github_raw_url = "https://raw.githubusercontent.com/parksso0613/smart-bioprocess-yield-predictor/refs/heads/main/100_Batches_IndPenSim_Statistics.csv"
     
-    file_path = None
-    for f in possible_files:
-        if os.path.exists(f):
-            file_path = f
-            break
-            
-    # 로컬 CSV 파일이 존재하지 않는 경우 더미 기본 데이터 세트 생성
-    if file_path is None:
+    raw_df = None
+    # 1순위: GitHub Raw URL에서 데이터 로드
+    try:
+        raw_df = pd.read_csv(github_raw_url)
+    except Exception:
+        # 2순위: 로컬 CSV 파일 탐색
+        possible_files = [
+            "100_Batches_IndPenSim_Statistics_2.csv",
+            "100_Batches_IndPenSim_Statistics.csv",
+            "fermentation_data.csv"
+        ]
+        for f in possible_files:
+            if os.path.exists(f):
+                try:
+                    raw_df = pd.read_csv(f)
+                    break
+                except Exception:
+                    continue
+
+    # 3순위: 외부/로컬 모두 실패 시 기본 더미 데이터 세트 생성
+    if raw_df is None:
         np.random.seed(42)
         n_samples = 300
         temp = np.random.uniform(25.0, 40.0, n_samples)
@@ -93,8 +102,6 @@ def load_real_csv_data():
         })
         
     try:
-        raw_df = pd.read_csv(file_path)
-        
         column_map = {}
         for col in raw_df.columns:
             col_lower = col.lower()
@@ -131,7 +138,7 @@ def load_real_csv_data():
         clean_df = df[required_cols].dropna().reset_index(drop=True)
         return clean_df
         
-    except Exception as e:
+    except Exception:
         np.random.seed(42)
         n_samples = 200
         return pd.DataFrame({
@@ -275,12 +282,10 @@ elif menu == "❓ 소질문 분석":
         st.markdown("### 소질문 ⑤: [3D 입체 분석] 온도 x pH 반응 표면 (3D Surface)")
         st.markdown("**분석 결과:** 온도(X축)와 pH(Y축)의 연속적 변화에 따른 예측 수율(Z축)을 입체 곡선 산 형태로 시각화했습니다. 산의 정상 부근(붉은 영역)이 최고 수율을 산출하는 최적 배양 구역입니다.")
         
-        # Grid 데이터 격자 생성
         temp_range = np.linspace(df['Temperature'].min(), df['Temperature'].max(), 30)
         ph_range = np.linspace(df['pH'].min(), df['pH'].max(), 30)
         T_grid, P_grid = np.meshgrid(temp_range, ph_range)
         
-        # 나머지 변수들은 평균값으로 고정하여 예측
         fixed_glucose = df['Glucose_Conc'].mean()
         fixed_rpm = df['Agitation_Speed'].mean()
         fixed_do = df['Dissolved_Oxygen'].mean()
@@ -353,7 +358,6 @@ elif menu == "🎛️ 실시간 수율 시뮬레이터":
     st.subheader("🎛️ 스마트 바이오 반응기 실시간 수율 예측")
     st.write("슬라이더를 수동 조절하거나, 아래 **🚀 AI 최적 레시피 자동 추천** 버튼을 눌러 최고의 배양 조건 조합을 자동으로 설정하세요.")
     
-    # Session State 초기화
     if 'sim_temp' not in st.session_state:
         st.session_state.sim_temp = float(df['Temperature'].mean())
     if 'sim_ph' not in st.session_state:
@@ -365,7 +369,6 @@ elif menu == "🎛️ 실시간 수율 시뮬레이터":
     if 'sim_do' not in st.session_state:
         st.session_state.sim_do = float(df['Dissolved_Oxygen'].mean())
 
-    # Auto-Optimizer 버튼
     col_opt1, col_opt2 = st.columns([1, 3])
     with col_opt1:
         if st.button("🚀 AI 최적 레시피 자동 탐색", use_container_width=True, type="primary"):
