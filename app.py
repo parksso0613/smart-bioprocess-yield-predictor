@@ -418,7 +418,7 @@ elif menu == "🚀 성능 높이기":
             X_tr[col] = X_tr[col].fillna(med_val)
             X_te[col] = X_te[col].fillna(med_val)
             
-        # 고수율 배치 기준선 (상위 30% 수준, 평균 이상 기준)
+        # 고수율 배치 기준선 (상위 30% 수준)
         high_yield_thresh = float(y_tr.quantile(0.7))
         actual_high = (y_te >= high_yield_thresh).values
         
@@ -493,9 +493,9 @@ elif menu == "🚀 성능 높이기":
         
         ax_col1, ax_col2 = st.columns(2)
         with ax_col1:
-            x_feat = st.selectbox("가로축(X) 속성 선택:", selected_features, index=0, format_func=lambda x: KOR_LABELS[x])
+            x_feat = st.selectbox("가로축(X) 속성 선택:", selected_features, index=0, format_func=lambda x: KOR_LABELS[x], key="2d_x")
         with ax_col2:
-            y_feat = st.selectbox("세로축(Y) 속성 선택:", selected_features, index=1, format_func=lambda x: KOR_LABELS[x])
+            y_feat = st.selectbox("세로축(Y) 속성 선택:", selected_features, index=1, format_func=lambda x: KOR_LABELS[x], key="2d_y")
             
         plot_df = df.copy()
         plot_df['배치 구분'] = np.where(plot_df['Yield'] >= high_yield_thresh, '고수율 배치 (목표 달성)', '일반 수율 배치')
@@ -518,7 +518,6 @@ elif menu == "🚀 성능 높이기":
             title=f"{KOR_LABELS[x_feat]} vs {KOR_LABELS[y_feat]} 고수율 경계선 비교"
         )
         
-        # 전·후 경계선 (목표 수율 임계값 등고선) 추가
         fig_2d.add_trace(go.Contour(
             x=x_grid, y=y_grid, z=zz_before,
             contours=dict(start=high_yield_thresh, end=high_yield_thresh, size=1, coloring='none'),
@@ -536,7 +535,6 @@ elif menu == "🚀 성능 높이기":
         fig_2d.update_layout(height=520)
         st.plotly_chart(fig_2d, use_container_width=True)
         
-        # 경계선이 그림 밖에 있는지 확인 후 안내
         in_range_before = (zz_before.min() <= high_yield_thresh <= zz_before.max())
         in_range_after = (zz_after.min() <= high_yield_thresh <= zz_after.max())
         if not in_range_before or not in_range_after:
@@ -545,28 +543,33 @@ elif menu == "🚀 성능 높이기":
             if not in_range_after: missing_names.append("성능 높이기 후 경계선")
             st.caption(f"ℹ️ 안내: 선택한 두 축의 현재 범위 밖에서 고수율 임계값이 형성되어 **{', '.join(missing_names)}**이(가) 그림 바깥쪽에 위치합니다.")
 
-        # 속성을 셋 이상 고르면 3차원 산점도 + 전후 예측 평면 표시
+        # 속성을 셋 이상 고르면 3차원 산점도 + 전후 예측 평면 표시 (X, Y, Z 모두 직접 선택 가능)
         if len(selected_features) >= 3:
             st.divider()
             st.markdown("### 🧊 3차원 공간에서의 성능 높이기 전·후 예측 평면 비교")
-            z_feat = st.selectbox("높이축(Z) 속성 선택:", selected_features, index=2, format_func=lambda x: KOR_LABELS[x])
+            
+            ax3_col1, ax3_col2, ax3_col3 = st.columns(3)
+            with ax3_col1:
+                x3_feat = st.selectbox("3D 가로축(X) 속성 선택:", selected_features, index=0, format_func=lambda x: KOR_LABELS[x], key="3d_x")
+            with ax3_col2:
+                y3_feat = st.selectbox("3D 세로축(Y) 속성 선택:", selected_features, index=1, format_func=lambda x: KOR_LABELS[x], key="3d_y")
+            with ax3_col3:
+                z3_feat = st.selectbox("3D 높이축(Z) 속성 선택:", selected_features, index=2, format_func=lambda x: KOR_LABELS[x], key="3d_z")
             
             fig_3d = px.scatter_3d(
-                plot_df, x=x_feat, y=y_feat, z=z_feat, color='배치 구분',
+                plot_df, x=x3_feat, y=y3_feat, z=z3_feat, color='배치 구분',
                 color_discrete_map={'고수율 배치 (목표 달성)': '#EF4444', '일반 수율 배치': '#3B82F6'},
-                labels={x_feat: KOR_LABELS[x_feat], y_feat: KOR_LABELS[y_feat], z_feat: KOR_LABELS[z_feat]},
+                labels={x3_feat: KOR_LABELS[x3_feat], y3_feat: KOR_LABELS[y3_feat], z3_feat: KOR_LABELS[z3_feat]},
                 title="3차원 배양 조건 분포 및 튜닝 전·후 예측 평면 (마우스로 드래그하여 회전 가능)"
             )
             fig_3d.update_traces(marker=dict(size=4))
             
-            # 3D 상에서 Z축 기준 전후 기준 평면 시각화
-            x_3d = np.linspace(plot_df[x_feat].min(), plot_df[x_feat].max(), 20)
-            y_3d = np.linspace(plot_df[y_feat].min(), plot_df[y_feat].max(), 20)
+            x_3d = np.linspace(plot_df[x3_feat].min(), plot_df[x3_feat].max(), 20)
+            y_3d = np.linspace(plot_df[y3_feat].min(), plot_df[y3_feat].max(), 20)
             xx3, yy3 = np.meshgrid(x_3d, y_3d)
             
-            # 전후 모델의 평균 Z 높이 예측 평면
-            z_plane_before = np.full_like(xx3, plot_df[z_feat].quantile(0.45))
-            z_plane_after = np.full_like(xx3, plot_df[z_feat].quantile(0.65))
+            z_plane_before = np.full_like(xx3, plot_df[z3_feat].quantile(0.45))
+            z_plane_after = np.full_like(xx3, plot_df[z3_feat].quantile(0.65))
             
             fig_3d.add_trace(go.Surface(
                 x=x_3d, y=y_3d, z=z_plane_before,
