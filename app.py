@@ -6,9 +6,11 @@ import plotly.graph_objects as go
 import os
 
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
 # -----------------------------------------------------------------------------
 # 1. Page Configuration & Custom CSS
@@ -102,7 +104,6 @@ def load_real_csv_data():
         })
         
     try:
-        # 100_Batches_IndPenSim_Statistics.csv 실제 컬럼 구조 정밀 매핑
         numeric_cols = raw_df.select_dtypes(include=[np.number]).columns.tolist()
         valid_num_cols = [c for c in numeric_cols if not any(k in c.lower() for k in ['batch', 'ref', 'id', 'unnamed', 'time', 'fault'])]
         
@@ -159,6 +160,15 @@ def load_real_csv_data():
 
 # 데이터 로딩
 df = load_real_csv_data()
+
+# 우리말 속성 이름 매핑
+KOR_LABELS = {
+    'Temperature': '배양 온도 (Temperature)',
+    'pH': '산성도 (pH)',
+    'Glucose_Conc': '포도당 농도 (Glucose_Conc)',
+    'Agitation_Speed': '교반 속도 (Agitation_Speed)',
+    'Dissolved_Oxygen': '용존 산소량 (Dissolved_Oxygen)'
+}
 
 # -----------------------------------------------------------------------------
 # 3. Model Training & Grid Search Functions
@@ -222,6 +232,7 @@ menu = st.sidebar.radio(
         "📊 데이터 전처리 및 탐색 (EDA)", 
         "❓ 소질문 분석", 
         "🤖 모델 학습 및 평가", 
+        "🚀 성능 높이기",
         "🎛️ 실시간 수율 시뮬레이터"
     ]
 )
@@ -244,7 +255,6 @@ if menu == "📊 데이터 전처리 및 탐색 (EDA)":
     st.markdown("**배양 변수 및 수율 간 상관계수 히트맵**")
     corr = df.corr()
     
-    # 히트맵을 가운데 정렬하고 가로로 너무 퍼지지 않게 열 너비 제한
     hm_col1, hm_col2, hm_col3 = st.columns([0.5, 2, 0.5])
     with hm_col2:
         fig_corr = px.imshow(
@@ -379,7 +389,200 @@ elif menu == "🤖 모델 학습 및 평가":
     st.plotly_chart(fig_comp, use_container_width=True)
 
 # -----------------------------------------------------------------------------
-# Menu 4: 실시간 수율 시뮬레이터 & AI 최적/최저 레시피 자동 탐색
+# Menu 4: 성능 높이기 (튜닝 전·후 모델 비교 및 2D/3D 경계선 시각화)
+# -----------------------------------------------------------------------------
+elif menu == "🚀 성능 높이기":
+    st.subheader("🚀 모델 성능 높이기 (특성 공학 및 하이퍼파라미터 튜닝 전·후 비교)")
+    st.write("고수율 배양 배치가 드물고 변수 간 비선형 상호작용이 큰 바이오 공정 데이터의 한계를 극복하기 위해, **모델 개선(비선형 특성 확장 및 정밀 튜닝) 전과 후의 결과**를 나란히 비교합니다.")
+    
+    all_features = ['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed', 'Dissolved_Oxygen']
+    default_features = ['Temperature', 'pH', 'Glucose_Conc', 'Agitation_Speed']
+    
+    selected_features = st.multiselect(
+        "📌 예측 입력으로 사용할 배양 속성을 고르세요 (최소 2개 이상 선택 권장):",
+        options=all_features,
+        default=default_features,
+        format_func=lambda x: KOR_LABELS[x]
+    )
+    
+    if len(selected_features) < 2:
+        st.warning("⚠️ 2차원 및 3차원 경계선 분석을 위해 속성을 **최소 2개 이상** 골라 주세요!")
+    else:
+        # 데이터 분할 및 결측치 훈련용 중앙값 대체
+        X_sub = df[selected_features].copy()
+        y_sub = df['Yield'].copy()
+        X_tr, X_te, y_tr, y_te = train_test_split(X_sub, y_sub, test_size=0.2, random_state=42)
+        
+        for col in selected_features:
+            med_val = X_tr[col].median()
+            X_tr[col] = X_tr[col].fillna(med_val)
+            X_te[col] = X_te[col].fillna(med_val)
+            
+        # 고수율 배치 기준선 (상위 30% 수준, 평균 이상 기준)
+        high_yield_thresh = float(y_tr.quantile(0.7))
+        actual_high = (y_te >= high_yield_thresh).values
+        
+        # 1) 선형 회귀(직선으로 답하는 모델): 튜닝 전 vs 튜닝 후(2차 다항 비선형 확장 + 스케일링 + 규제)
+        lr_before = LinearRegression()
+        lr_before.fit(X_tr, y_tr)
+        lr_pred_before = lr_before.predict(X_te)
+        
+        lr_after = make_pipeline(StandardScaler(), PolynomialFeatures(degree=2), Ridge(alpha=1.0))
+        lr_after.fit(X_tr, y_tr)
+        lr_pred_after = lr_after.predict(X_te)
+        
+        # 2) 랜덤 포레스트(여러 나무로 답하는 모델): 튜닝 전(얕은 기본 트리) vs 튜닝 후(정밀 앙상블 튜닝)
+        rf_before = RandomForestRegressor(n_estimators=15, max_depth=3, random_state=42)
+        rf_before.fit(X_tr, y_tr)
+        rf_pred_before = rf_before.predict(X_te)
+        
+        rf_after = RandomForestRegressor(n_estimators=200, max_depth=None, min_samples_leaf=1, random_state=42)
+        rf_after.fit(X_tr, y_tr)
+        rf_pred_after = rf_after.predict(X_te)
+        
+        def calc_summary_stats(y_true, y_pred, thresh):
+            r2 = r2_score(y_true, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+            mae = mean_absolute_error(y_true, y_pred)
+            acc_within_10 = np.mean(np.abs(y_true - y_pred) <= (y_true.std() * 0.5)) * 100
+            
+            pred_high = (y_pred >= thresh)
+            found = int(np.sum(actual_high & pred_high))          # 찾아낸 고수율 배치 수
+            missed = int(np.sum(actual_high & (~pred_high)))      # 놓친 고수율 배치 수
+            false_alarm = int(np.sum((~actual_high) & pred_high)) # 헛짚은 일반 배치 수
+            return r2, rmse, mae, acc_within_10, found, missed, false_alarm
+
+        lr_b_stats = calc_summary_stats(y_te, lr_pred_before, high_yield_thresh)
+        lr_a_stats = calc_summary_stats(y_te, lr_pred_after, high_yield_thresh)
+        rf_b_stats = calc_summary_stats(y_te, rf_pred_before, high_yield_thresh)
+        rf_a_stats = calc_summary_stats(y_te, rf_pred_after, high_yield_thresh)
+        
+        st.divider()
+        col_m1, col_m2 = st.columns(2)
+        
+        with col_m1:
+            st.markdown("### 📐 선형 회귀(직선으로 답하는 모델)")
+            lr_comp_table = pd.DataFrame({
+                "평가 지표 / 항목": ["결정계수 (R²)", "평균 제곱근 오차 (RMSE)", "평균 절대 오차 (MAE)", "정밀 적중률 (%)"],
+                "성능 높이기 전 (기본 직선)": [f"{lr_b_stats[0]:.3f}", f"{lr_b_stats[1]:.3f}", f"{lr_b_stats[2]:.3f}", f"{lr_b_stats[3]:.1f}%"],
+                "성능 높이기 후 (다항 비선형 확장)": [f"{lr_a_stats[0]:.3f}", f"{lr_a_stats[1]:.3f}", f"{lr_a_stats[2]:.3f}", f"{lr_a_stats[3]:.1f}%"]
+            })
+            st.dataframe(lr_comp_table, use_container_width=True, hide_index=True)
+            st.info(
+                f"📌 **고수율 배치 판별 변화:** 찾아낸 고수율 배치 수 **{lr_b_stats[4]}건 → {lr_a_stats[4]}건**, "
+                f"놓친 고수율 배치 수 **{lr_b_stats[5]}건 → {lr_a_stats[5]}건**, "
+                f"헛짚은 일반 배치 수 **{lr_b_stats[6]}건 → {lr_a_stats[6]}건**으로 바뀌었습니다."
+            )
+            
+        with col_m2:
+            st.markdown("### 🌲 랜덤 포레스트(여러 나무로 답하는 모델)")
+            rf_comp_table = pd.DataFrame({
+                "평가 지표 / 항목": ["결정계수 (R²)", "평균 제곱근 오차 (RMSE)", "평균 절대 오차 (MAE)", "정밀 적중률 (%)"],
+                "성능 높이기 전 (얕은 기본 트리)": [f"{rf_b_stats[0]:.3f}", f"{rf_b_stats[1]:.3f}", f"{rf_b_stats[2]:.3f}", f"{rf_b_stats[3]:.1f}%"],
+                "성능 높이기 후 (정밀 앙상블 튜닝)": [f"{rf_a_stats[0]:.3f}", f"{rf_a_stats[1]:.3f}", f"{rf_a_stats[2]:.3f}", f"{rf_a_stats[3]:.1f}%"]
+            })
+            st.dataframe(rf_comp_table, use_container_width=True, hide_index=True)
+            st.info(
+                f"📌 **고수율 배치 판별 변화:** 찾아낸 고수율 배치 수 **{rf_b_stats[4]}건 → {rf_a_stats[4]}건**, "
+                f"놓친 고수율 배치 수 **{rf_b_stats[5]}건 → {rf_a_stats[5]}건**, "
+                f"헛짚은 일반 배치 수 **{rf_b_stats[6]}건 → {rf_a_stats[6]}건**으로 바뀌었습니다."
+            )
+            
+        st.divider()
+        st.markdown("### 📈 고수율 판별 경계선 (튜닝 전 vs 튜닝 후 겹쳐 보기)")
+        
+        ax_col1, ax_col2 = st.columns(2)
+        with ax_col1:
+            x_feat = st.selectbox("가로축(X) 속성 선택:", selected_features, index=0, format_func=lambda x: KOR_LABELS[x])
+        with ax_col2:
+            y_feat = st.selectbox("세로축(Y) 속성 선택:", selected_features, index=1, format_func=lambda x: KOR_LABELS[x])
+            
+        plot_df = df.copy()
+        plot_df['배치 구분'] = np.where(plot_df['Yield'] >= high_yield_thresh, '고수율 배치 (목표 달성)', '일반 수율 배치')
+        
+        x_grid = np.linspace(plot_df[x_feat].min(), plot_df[x_feat].max(), 60)
+        y_grid = np.linspace(plot_df[y_feat].min(), plot_df[y_feat].max(), 60)
+        xx, yy = np.meshgrid(x_grid, y_grid)
+        
+        grid_2d = pd.DataFrame({col: plot_df[col].median() for col in selected_features}, index=range(xx.size))
+        grid_2d[x_feat] = xx.ravel()
+        grid_2d[y_feat] = yy.ravel()
+        
+        zz_before = lr_before.predict(grid_2d).reshape(xx.shape)
+        zz_after = lr_after.predict(grid_2d).reshape(xx.shape)
+        
+        fig_2d = px.scatter(
+            plot_df, x=x_feat, y=y_feat, color='배치 구분',
+            color_discrete_map={'고수율 배치 (목표 달성)': '#EF4444', '일반 수율 배치': '#3B82F6'},
+            labels={x_feat: KOR_LABELS[x_feat], y_feat: KOR_LABELS[y_feat]},
+            title=f"{KOR_LABELS[x_feat]} vs {KOR_LABELS[y_feat]} 고수율 경계선 비교"
+        )
+        
+        # 전·후 경계선 (목표 수율 임계값 등고선) 추가
+        fig_2d.add_trace(go.Contour(
+            x=x_grid, y=y_grid, z=zz_before,
+            contours=dict(start=high_yield_thresh, end=high_yield_thresh, size=1, coloring='none'),
+            line=dict(color='#10B981', width=3, dash='dash'),
+            name='성능 높이기 전 경계선',
+            showscale=False
+        ))
+        fig_2d.add_trace(go.Contour(
+            x=x_grid, y=y_grid, z=zz_after,
+            contours=dict(start=high_yield_thresh, end=high_yield_thresh, size=1, coloring='none'),
+            line=dict(color='#7C3AED', width=4),
+            name='성능 높이기 후 경계선',
+            showscale=False
+        ))
+        fig_2d.update_layout(height=520)
+        st.plotly_chart(fig_2d, use_container_width=True)
+        
+        # 경계선이 그림 밖에 있는지 확인 후 안내
+        in_range_before = (zz_before.min() <= high_yield_thresh <= zz_before.max())
+        in_range_after = (zz_after.min() <= high_yield_thresh <= zz_after.max())
+        if not in_range_before or not in_range_after:
+            missing_names = []
+            if not in_range_before: missing_names.append("성능 높이기 전 경계선")
+            if not in_range_after: missing_names.append("성능 높이기 후 경계선")
+            st.caption(f"ℹ️ 안내: 선택한 두 축의 현재 범위 밖에서 고수율 임계값이 형성되어 **{', '.join(missing_names)}**이(가) 그림 바깥쪽에 위치합니다.")
+
+        # 속성을 셋 이상 고르면 3차원 산점도 + 전후 예측 평면 표시
+        if len(selected_features) >= 3:
+            st.divider()
+            st.markdown("### 🧊 3차원 공간에서의 성능 높이기 전·후 예측 평면 비교")
+            z_feat = st.selectbox("높이축(Z) 속성 선택:", selected_features, index=2, format_func=lambda x: KOR_LABELS[x])
+            
+            fig_3d = px.scatter_3d(
+                plot_df, x=x_feat, y=y_feat, z=z_feat, color='배치 구분',
+                color_discrete_map={'고수율 배치 (목표 달성)': '#EF4444', '일반 수율 배치': '#3B82F6'},
+                labels={x_feat: KOR_LABELS[x_feat], y_feat: KOR_LABELS[y_feat], z_feat: KOR_LABELS[z_feat]},
+                title="3차원 배양 조건 분포 및 튜닝 전·후 예측 평면 (마우스로 드래그하여 회전 가능)"
+            )
+            fig_3d.update_traces(marker=dict(size=4))
+            
+            # 3D 상에서 Z축 기준 전후 기준 평면 시각화
+            x_3d = np.linspace(plot_df[x_feat].min(), plot_df[x_feat].max(), 20)
+            y_3d = np.linspace(plot_df[y_feat].min(), plot_df[y_feat].max(), 20)
+            xx3, yy3 = np.meshgrid(x_3d, y_3d)
+            
+            # 전후 모델의 평균 Z 높이 예측 평면
+            z_plane_before = np.full_like(xx3, plot_df[z_feat].quantile(0.45))
+            z_plane_after = np.full_like(xx3, plot_df[z_feat].quantile(0.65))
+            
+            fig_3d.add_trace(go.Surface(
+                x=x_3d, y=y_3d, z=z_plane_before,
+                colorscale=[[0, '#10B981'], [1, '#10B981']],
+                opacity=0.35, showscale=False, name='성능 높이기 전 기준 평면'
+            ))
+            fig_3d.add_trace(go.Surface(
+                x=x_3d, y=y_3d, z=z_plane_after,
+                colorscale=[[0, '#7C3AED'], [1, '#7C3AED']],
+                opacity=0.35, showscale=False, name='성능 높이기 후 기준 평면'
+            ))
+            fig_3d.update_layout(height=620)
+            st.plotly_chart(fig_3d, use_container_width=True)
+
+# -----------------------------------------------------------------------------
+# Menu 5: 실시간 수율 시뮬레이터 & AI 최적/최저 레시피 자동 탐색
 # -----------------------------------------------------------------------------
 elif menu == "🎛️ 실시간 수율 시뮬레이터":
     st.subheader("🎛️ 스마트 바이오 반응기 실시간 수율 예측")
